@@ -9,5 +9,5 @@ type Box struct {
 type Event struct {
 	Date     string `json:"date"`
 	Location string `json:"location"`
-	Event    string `json:"event"`
+	Info     string `json:"info"`
 }
