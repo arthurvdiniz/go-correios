@@ -84,10 +84,10 @@ func getPackageContent(content *goquery.Selection) (postDate time.Time, events [
 	return
 }
 
-func GetTrackerCodeInformation(code string) (Box, error) {
+func GetTrackerCodeInformation(code string) (*Box, error) {
 	document, err := getPackageDocument(code)
 	if err != nil {
-		return Box{}, err
+		return nil, err
 	}
 
 	postDate, events := getPackageContent(document)
@@ -98,5 +98,5 @@ func GetTrackerCodeInformation(code string) (Box, error) {
 		Events:   events,
 	}
 
-	return box, nil
+	return &box, nil
 }
