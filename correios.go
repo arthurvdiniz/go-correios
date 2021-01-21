@@ -12,22 +12,25 @@ import (
 	"github.com/djimenez/iconv-go"
 )
 
-func getPackageDocument(code string) (*goquery.Selection, error) {
-	trackerURL := "https://www2.correios.com.br/sistemas/rastreamento/resultado.cfm"
+const (
+	trackerUrl = "https://www2.correios.com.br/sistemas/rastreamento/resultado.cfm"
+)
 
+// Method responsible for getting the HTML Document to initialize the scrapping
+func getPackageDocument(code string) (*goquery.Selection, error) {
 	body := strings.NewReader(url.Values{"acao": {"track"}, "objetos": {code}, "btnPesq": {"Buscar"}}.Encode())
-	req, err := http.NewRequest("POST", trackerURL, body)
+	req, err := http.NewRequest("POST", trackerUrl, body)
 	if err != nil {
-		log.Fatalf("Error creating request: %s", err.Error())
+		log.Printf("Error creating request: %s", err.Error())
 		return nil, err
 	}
 
-	req.Header.Add("Referer", trackerURL)
+	req.Header.Add("Referer", trackerUrl)
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 
 	res, err := new(http.Client).Do(req)
 	if err != nil {
-		log.Fatalf("Error requesting: %s", err.Error())
+		log.Printf("Error requesting: %s", err.Error())
 		return nil, err
 	}
 
@@ -35,20 +38,21 @@ func getPackageDocument(code string) (*goquery.Selection, error) {
 
 	utfBody, err := iconv.NewReader(res.Body, "ISO-8859-1", "utf-8")
 	if err != nil {
-		log.Fatalf("Cannot convert to UTF-8: %s", err.Error())
+		log.Printf("Cannot convert to UTF-8: %s", err.Error())
 		return nil, err
 	}
 
 	doc, err := goquery.NewDocumentFromReader(utfBody)
 
 	if err != nil {
-		log.Fatalf("Cannot parse document: %s", err.Error())
+		log.Printf("Cannot parse document: %s", err.Error())
 		return nil, err
 	}
 
 	return doc.Find(".ctrlcontent").First(), nil
 }
 
+// Method responsible for scrapping the package document and returns all the events
 func getPackageContent(content *goquery.Selection) (postDate time.Time, events []Event) {
 	postDateRegex := regexp.MustCompile("\\d{2}\\/\\d{2}\\/\\d{4}")
 	postDateText := postDateRegex.FindStringSubmatch(content.Find("#EventoPostagem").Text())[0]
@@ -84,6 +88,7 @@ func getPackageContent(content *goquery.Selection) (postDate time.Time, events [
 	return
 }
 
+// Method responsible for getting the package content information
 func GetTrackerCodeInformation(code string) (*Box, error) {
 	document, err := getPackageDocument(code)
 	if err != nil {
