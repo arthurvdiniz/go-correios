@@ -14,7 +14,7 @@ type ParcelUseCase struct {
 	gateway.CorreiosGateway
 }
 
-func Get(code string, method string) (*entity.Box, error) {
+func GetTrackerCodeContent(code string, method string) (*entity.Box, error) {
 
 	uc := ParcelUseCase{}
 
