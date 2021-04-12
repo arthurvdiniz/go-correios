@@ -1,6 +1,10 @@
-package gocorreios
+package gateway
 
 import (
+	"errors"
+	"fmt"
+	"github.com/PuerkitoBio/goquery"
+	"github.com/djimenez/iconv-go"
 	"log"
 	"net/http"
 	"net/url"
@@ -8,24 +12,37 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PuerkitoBio/goquery"
-	"github.com/djimenez/iconv-go"
+	"github.com/arthurvdiniz/go-correios/entity"
 )
 
-const (
-	trackerUrl = "https://www2.correios.com.br/sistemas/rastreamento/resultado.cfm"
-)
+type CorreiosScraperGateway struct {
+	TrackerURL string
+}
 
-// Method responsible for getting the HTML Document to initialize the scrapping
-func getPackageDocument(code string) (*goquery.Selection, error) {
+func (g *CorreiosScraperGateway) GetTrackerCodeContent(box *entity.Box) error {
+	document, err := g.getParcelDocument(box.Code)
+	if err != nil {
+		return err
+	}
+
+	err = g.getParcelContent(box, document)
+	if err != nil {
+		return err
+	}
+
+	return nil
+
+}
+
+func (g *CorreiosScraperGateway) getParcelDocument(code string) (*goquery.Selection, error) {
 	body := strings.NewReader(url.Values{"acao": {"track"}, "objetos": {code}, "btnPesq": {"Buscar"}}.Encode())
-	req, err := http.NewRequest("POST", trackerUrl, body)
+	req, err := http.NewRequest("POST", g.TrackerURL, body)
 	if err != nil {
 		log.Printf("Error creating request: %s", err.Error())
 		return nil, err
 	}
 
-	req.Header.Add("Referer", trackerUrl)
+	req.Header.Add("Referer", g.TrackerURL)
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 
 	res, err := new(http.Client).Do(req)
@@ -52,20 +69,24 @@ func getPackageDocument(code string) (*goquery.Selection, error) {
 	return doc.Find(".ctrlcontent").First(), nil
 }
 
-// Method responsible for scrapping the package document and returns all the events
-func getPackageContent(content *goquery.Selection) (postDate time.Time, events []Event) {
+func (g *CorreiosScraperGateway) getParcelContent(box *entity.Box, selection *goquery.Selection) error {
 	postDateRegex := regexp.MustCompile("\\d{2}\\/\\d{2}\\/\\d{4}")
-	postDateText := postDateRegex.FindStringSubmatch(content.Find("#EventoPostagem").Text())[0]
-	postDate, err := time.Parse("02/01/2006", postDateText)
+	postDateArr := postDateRegex.FindStringSubmatch(selection.Find("#EventoPostagem").Text())
+	if len(postDateArr) == 0 {
+		return errors.New("Parcel Not Found")
+	}
+
+	postDate, err := time.Parse("02/01/2006", postDateArr[0])
 	if err != nil {
-		log.Printf("Error parsing package post date: %s", err.Error())
+		return errors.New(fmt.Sprintf("Error parsing package post date: %s", err.Error()))
 	}
 
 	r, _ := regexp.Compile("\\s+")
 	datetimeRegex := regexp.MustCompile("\\d{2}\\/\\d{2}\\/\\d{4}\\s\\d{2}:\\d{2}")
 	locationRegex := regexp.MustCompile("[A-z].+\\s{0,}\\/{0,}[A-Z]+")
 
-	content.Find(".listEvent tr").Each(func(i int, s *goquery.Selection) {
+	var events []entity.Event
+	selection.Find(".listEvent tr").Each(func(i int, s *goquery.Selection) {
 		detailsContent := s.Find(".sroDtEvent").Text()
 		textContent := strings.TrimSpace(s.Find(".sroLbEvent").Text())
 		detailsContent = r.ReplaceAllString(detailsContent, " ")
@@ -79,29 +100,15 @@ func getPackageContent(content *goquery.Selection) (postDate time.Time, events [
 
 		location := locationRegex.FindStringSubmatch(detailsContent)[0]
 
-		events = append(events, Event{
+		events = append(events, entity.Event{
 			Date:     date.UTC().String(),
 			Location: location,
 			Info:     textContent,
 		})
 	})
-	return
-}
 
-// Method responsible for getting the package content information
-func GetTrackerCodeInformation(code string) (*Box, error) {
-	document, err := getPackageDocument(code)
-	if err != nil {
-		return nil, err
-	}
+	box.PostDate = postDate.UTC().String()
+	box.Events = events
 
-	postDate, events := getPackageContent(document)
-
-	box := &Box{
-		Code:     code,
-		PostDate: postDate.UTC().String(),
-		Events:   events,
-	}
-
-	return box, nil
+	return nil
 }
